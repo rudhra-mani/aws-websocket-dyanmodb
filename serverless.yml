@@ -1,0 +1,91 @@
+org: rudhra
+app: worke-chat-websocket-dynamodb
+service: worke-chat-websocket-dynamodb
+
+frameworkVersion: '2'
+
+custom:
+  tableName: 'end-users-chat-table-${self:provider.stage}'
+
+provider:
+  name: aws
+  region: us-east-1
+  runtime: nodejs12.x
+  lambdaHashingVersion: '20201221'
+  stage: dev
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - Fn::GetAtt: [ EndUsersChatTable, Arn ]
+  environment:
+    END_USER_CHAT_TABLE: ${self:custom.tableName}
+    INDEX: gsi_id
+    REGION: ${self:provider.region}
+
+functions:
+  websocket-connect:
+    handler: src/connect.handler
+    events:
+        - websocket:
+              route: $connect
+  websocket-disconnect:
+    handler: src/disconnect.handler
+    events:
+        - websocket:
+              route: $disconnect
+  websocket-message:
+    handler: src/message.handler
+    events:
+        - websocket:
+              route: message
+  websocket-send:
+    handler: src/send.handler
+    events:
+        - websocket:
+              route: send
+  websocket-default:
+    handler: src/default.handler
+    events:
+        - websocket:
+              route: $default
+
+resources:
+  Resources:
+    EndUsersChatTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: endUserId
+            AttributeType: S
+          - AttributeName: domainId
+            AttributeType: S
+          - AttributeName: connectionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: endUserId
+            KeyType: HASH
+          - AttributeName: domainId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: gsi_id
+            KeySchema:
+            - AttributeName: connectionId
+              KeyType: HASH
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+            Projection:
+              ProjectionType: ALL
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:custom.tableName}
